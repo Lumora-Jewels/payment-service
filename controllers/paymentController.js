@@ -1,36 +1,63 @@
 const Payment = require("../models/Payment");
 const Stripe = require("stripe");
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
-// Create payment (Stripe)
+// Create payment (Stripe or COD)
 exports.createPayment = async (req, res) => {
-  const { userId, orderId, amount, currency } = req.body;
+  const { userId, orderId, amount, currency, method } = req.body;
 
   try {
-    // Create Stripe PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // in cents
-      currency: currency || "usd",
-      metadata: { userId, orderId }
-    });
+    let payment;
+    
+    if (method === 'cash_on_delivery') {
+      // For COD, create payment directly without Stripe
+      payment = new Payment({
+        userId,
+        orderId,
+        amount,
+        currency: currency || "usd",
+        method: "cash_on_delivery",
+        status: "pending"
+      });
+      
+      await payment.save();
+      
+      res.status(201).json({
+        payment,
+        message: "COD payment created successfully"
+      });
+    } else {
+      // For card payments, use Stripe if available
+      if (!stripe) {
+        return res.status(400).json({ 
+          error: "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable." 
+        });
+      }
 
-    // Save payment in DB
-    const payment = new Payment({
-      userId,
-      orderId,
-      amount,
-      currency: currency || "usd",
-      method: "card",
-      status: "pending",
-      stripePaymentIntentId: paymentIntent.id
-    });
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100), // in cents
+        currency: currency || "usd",
+        metadata: { userId, orderId }
+      });
 
-    await payment.save();
+      // Save payment in DB
+      payment = new Payment({
+        userId,
+        orderId,
+        amount,
+        currency: currency || "usd",
+        method: method || "card",
+        status: "pending",
+        stripePaymentIntentId: paymentIntent.id
+      });
 
-    res.status(201).json({
-      payment,
-      clientSecret: paymentIntent.client_secret
-    });
+      await payment.save();
+
+      res.status(201).json({
+        payment,
+        clientSecret: paymentIntent.client_secret
+      });
+    }
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
