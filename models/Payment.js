@@ -5,7 +5,7 @@ const paymentSchema = new mongoose.Schema({
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", required: true },
   amount: { type: Number, required: true },
   currency: { type: String, default: "usd" },
-  method: { type: String, enum: ["card", "paypal", "wallet"], default: "card" },
+  method: { type: String, enum: ["card", "paypal", "wallet", "cash_on_delivery"], default: "card" },
   status: { type: String, enum: ["pending", "completed", "failed"], default: "pending" },
   stripePaymentIntentId: { type: String }
 }, { timestamps: true });
